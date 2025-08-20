@@ -3,192 +3,73 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Notion Embed Calendar</title>
+  <title>Today + Weekday Widget</title>
   <style>
     :root{
-      --border:#e5e7eb; /* 枠線 */
-      --text:#111827;   /* 文字色 */
-      --muted:#6b7280;  /* 薄い文字 */
-      --primary:#3b82f6;/* 今日ハイライト */
-      --bg:#ffffff;     /* 背景 */
-      --weekend:#f3f4f6;/* 週末背景 */
+      --border:#e5e7eb;
+      --text:#111827;
+      --muted:#6b7280;
+      --accent:#3b82f6; /* 曜日チップ色 */
+      --bg:#ffffff;
     }
-    html,body{height:100%;}
-    body{
-      margin:0; background:var(--bg); color:var(--text);
-      font-family: system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial;
-    }
-    .container{max-width:760px;margin:0 auto;padding:12px}
-    .card{border:1px solid var(--border); border-radius:16px; padding:12px}
+    html,body{height:100%}
+    body{margin:0; background:var(--bg); color:var(--text);
+      font-family: system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial}
+    .wrap{min-height:120px; display:flex; align-items:center; justify-content:center; padding:16px}
+    .card{border:1px solid var(--border); border-radius:16px; padding:16px 20px;
+      box-shadow:0 1px 3px rgba(0,0,0,.06); text-align:center}
+    .ymd{font-size:28px; font-weight:700; letter-spacing:.02em}
+    .chip{display:inline-flex; align-items:center; justify-content:center; gap:6px;
+      font-size:14px; color:#fff; background:var(--accent); border-radius:999px;
+      padding:4px 10px; margin-top:6px}
+    .muted{font-size:12px; color:var(--muted); margin-top:4px}
 
-    /* ヘッダー */
-    .header{display:flex; align-items:center; justify-content:space-between; gap:8px;}
-    .title{font-size:18px; font-weight:700}
-    .sub{font-size:12px; color:var(--muted)}
-    .controls{display:flex; align-items:center; gap:6px}
-    .btn{appearance:none; border:1px solid var(--border); background:#fff; padding:6px 10px; border-radius:10px; cursor:pointer}
-    .btn:active{transform:translateY(1px)}
-
-    .dow, .grid{display:grid; grid-template-columns: repeat(7,1fr); gap:6px}
-    .dow{margin-top:10px}
-    .dow div{font-size:12px; color:var(--muted); text-align:center}
-
-    .cell{
-      min-height:64px; border:1px solid var(--border); border-radius:12px;
-      display:flex; flex-direction:column; align-items:center; justify-content:flex-start;
-      padding:6px; text-align:center; position:relative; overflow:hidden;
-      background:#fff;
-    }
-    .outside{opacity:.45}
-    .num{font-weight:600}
-    .today{outline:2px solid var(--primary);}
-    .weekend{background:var(--weekend)}
-
-    .dots{margin-top:4px; display:flex; gap:3px; flex-wrap:wrap; justify-content:center}
-    .dot{width:6px; height:6px; border-radius:50%; background:var(--primary)}
-
-    /* レスポンシブ（横幅が狭いとき高さを詰める） */
-    @media (max-width:480px){
-      .cell{min-height:52px}
-    }
+    /* 小さめ表示にしたい場合は下のサイズを下げてOK */
+    @media (max-width:420px){ .ymd{font-size:22px} }
   </style>
 </head>
 <body>
-  <div class="container">
+  <div class="wrap">
     <div class="card">
-      <div class="header">
-        <div>
-          <div class="title" id="title">Calendar</div>
-          <div class="sub" id="todayText"></div>
-        </div>
-        <div class="controls">
-          <button class="btn" id="prev">← 前月</button>
-          <button class="btn" id="todayBtn">今日</button>
-          <button class="btn" id="next">翌月 →</button>
-        </div>
-      </div>
-
-      <div class="dow" id="dow"></div>
-      <div class="grid" id="grid"></div>
+      <div class="ymd" id="ymd">2025年8月20日</div>
+      <div class="chip" id="wd">水</div>
+      <div class="muted" id="ts"></div>
     </div>
   </div>
 
   <script>
     // ===== 設定 =====
     const CONFIG = {
-      locale: 'ja-JP',
-      timeZone: 'Asia/Tokyo',
-      startOnMonday: true,         // 月曜はじまり
-      showWeekendBg: true,
-      // 予定を点で表示したい場合は、YYYY-MM-DD の配列/回数をここで指定
-      // 例: { '2025-08-05': 2, '2025-08-13': 1 }
-      events: {}
+      locale: 'ja-JP',         // 表示ロケール
+      timeZone: 'Asia/Tokyo',  // タイムゾーン
+      showSeconds: false,      // 下の小さな時計に秒を含めるか（falseで分まで）
+      showClock: true          // 小さな時計自体の表示/非表示
     };
 
-    // 曜日ラベル
-    const DOW_JA = CONFIG.startOnMonday
-      ? ['月','火','水','木','金','土','日']
-      : ['日','月','火','水','木','金','土'];
-
-    const dowEl = document.getElementById('dow');
-    const gridEl = document.getElementById('grid');
-
-    function formatMonthTitle(date){
-      return new Intl.DateTimeFormat(CONFIG.locale, { year:'numeric', month:'long', timeZone: CONFIG.timeZone }).format(date);
-    }
-    function formatFullDate(date){
-      return new Intl.DateTimeFormat(CONFIG.locale, { year:'numeric', month:'long', day:'numeric', weekday:'short', timeZone: CONFIG.timeZone }).format(date);
-    }
-
-    function startOfCalendar(y, m){
-      // カレンダー開始日（週頭に合わせて前月末に戻す）
-      const first = new Date(Date.UTC(y, m, 1));
-      const jsDow = new Date(first.getUTCFullYear(), first.getUTCMonth(), first.getUTCDate()).getDay(); // 0:日〜6:土 (ローカル)
-      const shift = CONFIG.startOnMonday ? ((jsDow + 6) % 7) : jsDow; // 月0..日6 に合わせる
-      const d = new Date(Date.UTC(y, m, 1 - shift));
-      return d;
-    }
-
-    function ymd(date){
-      const dt = new Date(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate());
-      const y = dt.getFullYear();
-      const m = (dt.getMonth()+1).toString().padStart(2,'0');
-      const d = dt.getDate().toString().padStart(2,'0');
-      return `${y}-${m}-${d}`;
-    }
-
-    function isSameDay(a,b){
-      return a.getFullYear()===b.getFullYear() && a.getMonth()===b.getMonth() && a.getDate()===b.getDate();
-    }
-
-    function buildDOW(){
-      dowEl.innerHTML = '';
-      DOW_JA.forEach(n => {
-        const div = document.createElement('div');
-        div.textContent = n; dowEl.appendChild(div);
+    function render(){
+      const now = new Date();
+      const ymd = now.toLocaleDateString(CONFIG.locale, {
+        year:'numeric', month:'long', day:'numeric', timeZone: CONFIG.timeZone
       });
+      const wd  = now.toLocaleDateString(CONFIG.locale, {
+        weekday:'short', timeZone: CONFIG.timeZone
+      });
+      document.getElementById('ymd').textContent = ymd;
+      document.getElementById('wd').textContent  = wd;
+
+      const ts = CONFIG.showSeconds
+        ? now.toLocaleTimeString(CONFIG.locale, { timeZone: CONFIG.timeZone })
+        : now.toLocaleTimeString(CONFIG.locale, { timeZone: CONFIG.timeZone, hour12:false, hour:'2-digit', minute:'2-digit' });
+      document.getElementById('ts').textContent = CONFIG.showClock ? ts : '';
     }
 
-    function buildCalendar(baseDate){
-      const y = baseDate.getFullYear();
-      const m = baseDate.getMonth(); // 0-11
+    render();
+    // 1分毎に更新（秒表示ONなら1秒毎）
+    setInterval(render, CONFIG.showSeconds ? 1000 : 60000);
 
-      document.getElementById('title').textContent = formatMonthTitle(new Date(y, m, 1));
-      document.getElementById('todayText').textContent = formatFullDate(new Date());
-
-      gridEl.innerHTML = '';
-      const start = startOfCalendar(y, m);
-      const today = new Date();
-
-      for(let i=0;i<42;i++){
-        const d = new Date(start); d.setUTCDate(start.getUTCDate()+i);
-        const cell = document.createElement('div');
-        cell.className = 'cell';
-
-        const local = new Date(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
-        const inMonth = (local.getMonth() === m);
-        if(!inMonth) cell.classList.add('outside');
-
-        // 週末背景
-        const dow = local.getDay();
-        const isWeekend = CONFIG.startOnMonday ? (dow===6 || dow===0) : (dow===0 || dow===6);
-        if(CONFIG.showWeekendBg && isWeekend) cell.classList.add('weekend');
-
-        // 数字
-        const num = document.createElement('div');
-        num.className = 'num';
-        num.textContent = local.getDate();
-        cell.appendChild(num);
-
-        // 今日ハイライト
-        if(isSameDay(local, today)) cell.classList.add('today');
-
-        // イベント点
-        const key = ymd(d);
-        const count = CONFIG.events[key] || 0;
-        if(count>0){
-          const dots = document.createElement('div');
-          dots.className = 'dots';
-          for(let j=0;j<Math.min(count, 4); j++){
-            const dot = document.createElement('div');
-            dot.className = 'dot'; dots.appendChild(dot);
-          }
-          cell.appendChild(dots);
-        }
-
-        gridEl.appendChild(cell);
-      }
-    }
-
-    // ナビゲーション
-    let current = new Date();
-    document.getElementById('prev').addEventListener('click', () => { current = new Date(current.getFullYear(), current.getMonth()-1, 1); buildCalendar(current); });
-    document.getElementById('next').addEventListener('click', () => { current = new Date(current.getFullYear(), current.getMonth()+1, 1); buildCalendar(current); });
-    document.getElementById('todayBtn').addEventListener('click', () => { current = new Date(); buildCalendar(current); });
-
-    // 初期化
-    buildDOW();
-    buildCalendar(current);
+    // --- フォーマットをMM/DD形式にしたい場合の例 ---
+    // const y = now.getFullYear(); const m = now.getMonth()+1; const d = now.getDate();
+    // document.getElementById('ymd').textContent = `${m}/${d}`;
   </script>
 </body>
 </html>
