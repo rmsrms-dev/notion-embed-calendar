@@ -3,37 +3,50 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Today + Weekday Widget</title>
+  <title>Today + Weekday Widget (Weekend colors)</title>
   <style>
     :root{
       --border:#e5e7eb;
       --text:#111827;
       --muted:#6b7280;
-      --accent:#3b82f6; /* 曜日チップ色 */
+      --accent:#3b82f6;      /* 平日用チップ色 */
+      --accent-sat:#0ea5e9;  /* 土曜 */
+      --accent-sun:#ef4444;  /* 日曜 */
       --bg:#ffffff;
     }
     html,body{height:100%}
     body{margin:0; background:var(--bg); color:var(--text);
       font-family: system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial}
-    .wrap{min-height:120px; display:flex; align-items:center; justify-content:center; padding:16px}
-    .card{border:1px solid var(--border); border-radius:16px; padding:16px 20px;
-      box-shadow:0 1px 3px rgba(0,0,0,.06); text-align:center}
-    .ymd{font-size:28px; font-weight:700; letter-spacing:.02em}
-    .chip{display:inline-flex; align-items:center; justify-content:center; gap:6px;
-      font-size:14px; color:#fff; background:var(--accent); border-radius:999px;
-      padding:4px 10px; margin-top:6px}
+    .wrap{display:flex; align-items:center;}
+    .card{display:flex; align-items:center; border-radius:16px; padding:8px 20px; text-align:center}
+
+    /* --- Month & Day: 数字を大きく、"月"/"日"は小さく --- */
+    .md{display:flex; align-items:flex-end; justify-content:center; gap:4px}
+    .month,.day{display:flex; align-items:baseline; gap:2px}
+    .month .num{font-size:28px; font-weight:800; letter-spacing:.02em}
+    .day   .num{font-size:56px; font-weight:900; line-height:1}
+    .unit{font-size:12px; color:var(--muted); line-height:1}
+
+    .chip{display:flex; align-items:center; justify-content:center; gap:6px;
+      font-size:14px; color:#fff; border-radius:999px; width:30px; height:30px;}
+    .chip.weekday{ background: var(--accent); }
+    .chip.sat{     background: var(--accent-sat); }
+    .chip.sun{     background: var(--accent-sun); }
+
     .muted{font-size:12px; color:var(--muted); margin-top:4px}
 
-    /* 小さめ表示にしたい場合は下のサイズを下げてOK */
-    @media (max-width:420px){ .ymd{font-size:22px} }
+    @media (max-width:420px){ .day .num{font-size:44px} .month .num{font-size:22px} .unit{font-size:11px} }
   </style>
 </head>
 <body>
   <div class="wrap">
     <div class="card">
-      <div class="ymd" id="ymd">2025年8月20日</div>
-      <div class="chip" id="wd">水</div>
-      <div class="muted" id="ts"></div>
+      <div class="md">
+        <div class="month"><span class="num" id="monthNum">8</span><span class="unit">月</span></div>
+        <div class="day"><span class="num" id="dayNum">20</span><span class="unit">日</span></div>
+      </div>
+      <div class="chip weekday" id="wd">水</div>
+      <!-- <div class="muted" id="ts"></div> -->
     </div>
   </div>
 
@@ -42,20 +55,29 @@
     const CONFIG = {
       locale: 'ja-JP',         // 表示ロケール
       timeZone: 'Asia/Tokyo',  // タイムゾーン
-      showSeconds: false,      // 下の小さな時計に秒を含めるか（falseで分まで）
+      showSeconds: false,      // 下の小さな時計に秒を含めるか
       showClock: true          // 小さな時計自体の表示/非表示
     };
 
     function render(){
       const now = new Date();
-      const ymd = now.toLocaleDateString(CONFIG.locale, {
-        year:'numeric', month:'long', day:'numeric', timeZone: CONFIG.timeZone
-      });
-      const wd  = now.toLocaleDateString(CONFIG.locale, {
+      const monthNum = String(now.getMonth() + 1); // 1〜12（数字のみ）
+      const dayNum   = String(now.getDate());      // 1〜31（数字のみ）
+
+      const wdText = now.toLocaleDateString(CONFIG.locale, {
         weekday:'short', timeZone: CONFIG.timeZone
-      });
-      document.getElementById('ymd').textContent = ymd;
-      document.getElementById('wd').textContent  = wd;
+      }); // 例: '水'
+      const dow = now.getDay(); // 0:日,1:月,...,6:土
+
+      document.getElementById('monthNum').textContent = monthNum;
+      document.getElementById('dayNum').textContent   = dayNum;
+
+      const chip = document.getElementById('wd');
+      chip.textContent = wdText;
+      chip.classList.remove('weekday','sat','sun');
+      if (dow === 0) chip.classList.add('sun');
+      else if (dow === 6) chip.classList.add('sat');
+      else chip.classList.add('weekday');
 
       const ts = CONFIG.showSeconds
         ? now.toLocaleTimeString(CONFIG.locale, { timeZone: CONFIG.timeZone })
@@ -63,13 +85,9 @@
       document.getElementById('ts').textContent = CONFIG.showClock ? ts : '';
     }
 
+    // 初回 + 自動更新
     render();
-    // 1分毎に更新（秒表示ONなら1秒毎）
     setInterval(render, CONFIG.showSeconds ? 1000 : 60000);
-
-    // --- フォーマットをMM/DD形式にしたい場合の例 ---
-    // const y = now.getFullYear(); const m = now.getMonth()+1; const d = now.getDate();
-    // document.getElementById('ymd').textContent = `${m}/${d}`;
   </script>
 </body>
 </html>
